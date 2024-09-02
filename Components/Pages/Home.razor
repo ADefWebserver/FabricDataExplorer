@@ -1,0 +1,352 @@
+﻿@page "/"
+@using FabricDataExplorer.Components.Pages.Controls
+@using Microsoft.Data.SqlClient
+@using System.Data
+@inject ConnectionSettingsService ConnectionSettings
+
+<PageTitle>Import Data</PageTitle>
+
+@if (ShowConnectionDialog)
+{
+    <DatabaseConnectionDialog ConnectionType="@ConnectionType"
+                              DatabaseName="@DatabaseName"
+                              DatabasePassword="@DatabasePassword"
+                              DatabaseUsername="@DatabaseUsername"
+                              IntegratedSecurityDisplay="@IntegratedSecurityDisplay"
+                              ServerName="@ServerName"
+                              Close="CloseShowConnectionDialog"
+                              OnSetConnection="SetConnectionString" />
+}
+
+@if (ShowAzureConnectionDialog)
+{
+    <AzureStorageConnectionDialog StorageAccountName="@StorageAccountName"
+                                  ContainerName="@ContainerName"
+                                  AccountKey="@AccountKey"
+                                  Close="CloseAzureConnectionDialog"
+                                  OnSetConnection="SetConnectionString" />
+}
+
+@if (isLoading)
+{
+    <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+        <span>Processing...</span>
+    </div>
+}
+else
+{
+    <div>
+        <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+            <button @onclick="OpenShowConnectionDialogSQL" title="Settings" style="background:none;border:none;margin-top: 5px;">
+                <i class="material-icons" style="color:black;">settings</i>
+            </button>
+            <b>Database Connection: </b>
+            <span style="color:@(DatabaseConnectionStringStatusMessage == "Set" ? "green" : "red")">
+                @DatabaseConnectionStringStatusMessage
+            </span>
+        </div>
+        <br />
+        <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+            <button @onclick="OpenShowConnectionDialogFabric" title="Settings" style="background:none;border:none;margin-top: 5px;">
+                <i class="material-icons" style="color:black;">settings</i>
+            </button>
+            <b>Fabric Connection: </b>
+            <span style="color:@(FabricConnectionStringStatusMessage == "Set" ? "green" : "red")">
+                @FabricConnectionStringStatusMessage
+            </span>
+        </div>
+        <br />
+        <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+            <button @onclick="OpenShowConnectionDialogAzureStorage" title="Settings" style="background:none;border:none;margin-top: 5px;">
+                <i class="material-icons" style="color:black;">settings</i>
+            </button>
+            <b>Azure Storage Connection: </b>
+            <span style="color:@(AzureStorageConnectionStringStatusMessage == "Set" ? "green" : "red")">
+                @AzureStorageConnectionStringStatusMessage
+            </span>
+        </div>
+    </div>
+    @if (isReadyForImport)
+    {
+        <br />
+        <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+            <b>Table: </b>
+            <select @onchange="OnSelectedTableChanged" style="width: 300px; border-block:hidden">
+                @foreach (var tableName in tableNames)
+                {
+                    <option value="@tableName">@tableName</option>
+                }
+            </select>
+        </div>
+        <br />
+        <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+            <button class="btn btn-success" @onclick="() => ImportDataIntoFabric()">Import Data</button>
+        </div>
+        <br />
+        @if (Message != "")
+        {
+            <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+                <b>Result: </b>
+                <span>@Message</span>
+            </div>
+        }
+    }
+}
+
+@code {
+    string DatabaseConnectionString = "";
+    string FabricConnectionString = "";
+    string AzureStorageConnectionString = "";
+
+    string DatabaseConnectionStringStatusMessage = "Not Set";
+    string FabricConnectionStringStatusMessage = "Not Set";
+    string AzureStorageConnectionStringStatusMessage = "Not Set";
+
+    private bool ShowConnectionDialog { get; set; } = false;
+    private bool ShowAzureConnectionDialog { get; set; } = false;
+    private bool showStatusDialog { get; set; } = false;
+
+    bool isLoading { get; set; } = false;
+    bool isReadyForImport { get; set; } = false;
+    bool ShowStatusDialog { get; set; } = false;
+
+    List<string> tableNames = new List<string> { };
+    string selectedTable { get; set; } = "";
+    string Message { get; set; } = "";
+
+    private string ConnectionType = "";
+    private string DatabaseName = "";
+    private string DatabasePassword = "";
+    private string DatabaseUsername = "";
+    private string IntegratedSecurityDisplay = "";
+    private string ServerName = "";
+
+    private string StorageAccountName = "";
+    private string ContainerName = "";
+    private string AccountKey = "";
+
+    // ********************************************************************************************************************
+    // Database Connection
+    // ********************************************************************************************************************
+
+    #region private void OpenShowConnectionDialogSQL()
+    private void OpenShowConnectionDialogSQL()
+    {
+        var sqlSettings = ConnectionSettings.SQLServer;
+
+        ConnectionType = "SQL";
+        DatabaseName = sqlSettings.DatabaseName;
+        DatabasePassword = sqlSettings.DatabasePassword;
+        DatabaseUsername = sqlSettings.DatabaseUsername;
+        IntegratedSecurityDisplay = sqlSettings.IntegratedSecurityDisplay;
+        ServerName = sqlSettings.ServerName;
+
+        ShowConnectionDialog = true;
+    }
+    #endregion
+
+    #region private void OpenShowConnectionDialogFabric()
+    private void OpenShowConnectionDialogFabric()
+    {
+        var fabricSettings = ConnectionSettings.Fabric;
+
+        ConnectionType = "Fabric";
+        DatabaseName = fabricSettings.DatabaseName;
+        DatabasePassword = fabricSettings.DatabasePassword;
+        DatabaseUsername = fabricSettings.DatabaseUsername;
+        IntegratedSecurityDisplay = fabricSettings.IntegratedSecurityDisplay;
+        ServerName = fabricSettings.ServerName;
+
+        ShowConnectionDialog = true;
+    }
+    #endregion
+
+    #region private void OpenShowConnectionDialogAzureStorage()
+    private void OpenShowConnectionDialogAzureStorage()
+    {
+        var azureStorageSettings = ConnectionSettings.AzureStorage;
+
+        ConnectionType = "AzureStorage";
+        StorageAccountName = azureStorageSettings.StorageAccountName;
+        ContainerName = azureStorageSettings.ContainerName;
+        AccountKey = azureStorageSettings.AccountKey;
+
+        ShowAzureConnectionDialog = true;
+    }
+    #endregion
+
+    #region private void CloseShowConnectionDialog()
+    private void CloseShowConnectionDialog()
+    {
+        ShowConnectionDialog = false;
+    }
+    #endregion
+
+    #region private void CloseAzureConnectionDialog()
+    private void CloseAzureConnectionDialog()
+    {
+        ShowAzureConnectionDialog = false;
+    }
+    #endregion
+
+    #region private void SetConnectionString(string strConnectionString)
+    private void SetConnectionString(string strConnectionString)
+    {
+        // Set the connection string to the global variable
+
+        if (ConnectionType == "SQL")
+        {
+            DatabaseConnectionString = strConnectionString;
+
+            if (DatabaseConnectionString != "")
+            {
+                DatabaseConnectionStringStatusMessage = "Set";
+            }
+        }
+
+        if (ConnectionType == "Fabric")
+        {
+            FabricConnectionString = strConnectionString;
+
+            if (FabricConnectionString != "")
+            {
+                FabricConnectionStringStatusMessage = "Set";
+            }
+        }
+
+        if (ConnectionType == "AzureStorage")
+        {
+            AzureStorageConnectionString = strConnectionString;
+
+            if (AzureStorageConnectionString != "")
+            {
+                AzureStorageConnectionStringStatusMessage = "Set";
+            }
+        }
+
+        ShowConnectionDialog = false;
+        ShowAzureConnectionDialog = false;
+
+        if ((DatabaseConnectionString != "") && (FabricConnectionString != "") && (AzureStorageConnectionString != ""))
+        {
+            isReadyForImport = true;
+            GetTablesInDatabase();
+        }
+    }
+    #endregion
+
+    #region private void OnSelectedTableChanged(ChangeEventArgs e)
+    private void OnSelectedTableChanged(ChangeEventArgs e)
+    {
+        selectedTable = e.Value.ToString();
+    }
+    #endregion
+
+    // ********************************************************************************************************************
+    // Load Data
+    // ********************************************************************************************************************
+
+    #region private void GetTablesInDatabase()
+    private void GetTablesInDatabase()
+    {
+        tableNames = new List<string>();
+
+        // Use the DatabaseConnectionString to get the tables in the database
+        using (SqlConnection connection = new SqlConnection(DatabaseConnectionString))
+        {
+            connection.Open();
+
+            // Get the tables in the database
+            DataTable dt = connection.GetSchema("Tables");
+
+            // Get the table names
+            foreach (DataRow row in dt.Rows)
+            {
+                // Ensure that the table is not a system table
+                if (row[3].ToString() == "BASE TABLE")
+                {
+                    string tablename = $"[{(string)row[1]}].[{(string)row[2]}]";
+                    tableNames.Add(tablename);
+                }
+            }
+
+            connection.Close();
+
+            // order the table names
+            tableNames.Sort();
+
+            // Set the value to the first table
+            if (tableNames.Count > 0)
+            {
+                selectedTable = tableNames[0];
+            }
+        }
+    }
+    #endregion
+
+    #region private async Task ImportDataIntoFabric()
+    private async Task ImportDataIntoFabric()
+    {
+        isLoading = true;
+
+        using (SqlConnection connection = new SqlConnection(DatabaseConnectionString))
+        {
+            connection.Open();
+
+            // Get the column names and wrap them in square brackets
+            // Get a list of the column names
+            List<string> columns = new List<string>();
+
+            DataTable Columns = connection.GetSchema("Columns");
+
+            foreach (DataRow row in Columns.Rows)
+            {
+                if ($"[{row["TABLE_SCHEMA"].ToString()}].[{row["TABLE_NAME"].ToString()}]" == selectedTable)
+                {
+                    columns.Add($"[{row["COLUMN_NAME"].ToString()}]");
+                }
+            }
+
+            connection.Close();
+
+            // Use columns to create the SQL Query
+            string columnString = string.Join(",", columns);
+            string sqlQuery = $"SELECT ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS _Id,{columnString} FROM {selectedTable}";
+
+            // Call ImportIntoFabric
+            ImportIntoFabric importIntoFabric = new ImportIntoFabric();
+
+            importIntoFabric.SqlQuery = sqlQuery;
+            importIntoFabric.TableName = RemoveSchema(selectedTable);
+            importIntoFabric.DataWarehouseConnectionString = FabricConnectionString;
+            importIntoFabric.SQLConnectionString = DatabaseConnectionString;
+            importIntoFabric.StorageAccountName = StorageAccountName;
+            importIntoFabric.StorageContainer = ContainerName;
+            importIntoFabric.StorageAccountKey = AccountKey;
+
+            Message = await importIntoFabric.ImportData();
+            showStatusDialog = true;
+            StateHasChanged();
+        }
+
+        isLoading = false;
+    }
+    #endregion
+
+    #region static string RemoveSchema(string input)
+    static string RemoveSchema(string input)
+    {
+        int startIndex = input.IndexOf('[') + 1;
+        int endIndex = input.IndexOf(']');
+
+        if (startIndex < 0 || endIndex < 0 || startIndex >= endIndex)
+        {
+            throw new ArgumentException("Invalid input format");
+        }
+
+        string tableName = input.Substring(endIndex + 2);
+
+        return tableName;
+    }
+    #endregion
+}
