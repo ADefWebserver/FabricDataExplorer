@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -16,5 +16,6 @@
 		<PackageReference Include="Microsoft.SqlServer.Server" Version="1.0.0" />
 		<PackageReference Include="Microsoft.SqlServer.Types" Version="160.1000.6" />
 		<PackageReference Include="Parquet.Net" Version="4.24.0" />
+		<PackageReference Include="BlazorDatasheet" Version="0.3.0.1" />
 	</ItemGroup>
 </Project>

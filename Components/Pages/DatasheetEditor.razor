@@ -1,0 +1,918 @@
+﻿@page "/datasheeteditor"
+@using FabricDataExplorer.Components.Pages.Controls
+@using Microsoft.Data.SqlClient
+@using System.Data
+
+@using BlazorDatasheet
+@using BlazorDatasheet.Core.Events
+@using BlazorDatasheet.Core.Events.Layout
+@using BlazorDatasheet.Core.Interfaces
+@using BlazorDatasheet.Core.Validation
+@using BlazorDatasheet.DataStructures.Geometry
+@using BlazorDatasheet.Edit.DefaultComponents
+@using BlazorDatasheet.Formula.Core
+@using BlazorDatasheet.Render
+@using BlazorDatasheet.Core.Data
+@using BlazorDatasheet.Core.Formats
+@using BlazorDatasheet.Core.FormulaEngine
+
+@inject ConnectionSettingsService ConnectionSettings
+
+<PageTitle>Datasheet</PageTitle>
+
+@if (ShowConnectionDialog)
+{
+    <DatabaseConnectionDialog ConnectionType="@ConnectionType"
+                              DatabaseName="@DatabaseName"
+                              DatabasePassword="@DatabasePassword"
+                              DatabaseUsername="@DatabaseUsername"
+                              IntegratedSecurityDisplay="@IntegratedSecurityDisplay"
+                              ServerName="@ServerName"
+                              Close="CloseShowConnectionDialog"
+                              OnSetConnection="SetConnectionString" />
+}
+
+@if (ShowAzureConnectionDialog)
+{
+    <AzureStorageConnectionDialog StorageAccountName="@StorageAccountName"
+                                  ContainerName="@ContainerName"
+                                  AccountKey="@AccountKey"
+                                  Close="CloseAzureConnectionDialog"
+                                  OnSetConnection="SetConnectionString" />
+}
+
+@if (isLoading)
+{
+    <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+        <span>Processing...</span>
+    </div>
+}
+else
+{
+    <div>
+        <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+            <button @onclick="OpenShowConnectionDialogFabric" title="Settings" style="background:none;border:none;margin-top: 5px;">
+                <i class="material-icons" style="color:black;">settings</i>
+            </button>
+            <b>Fabric Connection: </b>
+            <span style="color:@(FabricConnectionStringStatusMessage == "Set" ? "green" : "red")">
+                @FabricConnectionStringStatusMessage
+            </span>
+        </div>
+        <br />
+        <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+            <button @onclick="OpenShowConnectionDialogAzureStorage" title="Settings" style="background:none;border:none;margin-top: 5px;">
+                <i class="material-icons" style="color:black;">settings</i>
+            </button>
+            <b>Azure Storage Connection: </b>
+            <span style="color:@(AzureStorageConnectionStringStatusMessage == "Set" ? "green" : "red")">
+                @AzureStorageConnectionStringStatusMessage
+            </span>
+        </div>
+    </div>
+    @if (isReadyForImport)
+    {     
+        <br />
+        <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+            <button @onclick="btnSave" disabled="@SavingDisabled" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">save</i>
+            </button>
+            <span style="border-right: 2px solid #D3D3D3;"></span>
+            <button @onclick="() => sheet.Commands.Undo()" title="Undo" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">undo</i>
+            </button>
+            <button @onclick="() => sheet.Commands.Redo()" title="Redo" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">redo</i>
+            </button>
+            <span style="border-right: 2px solid #D3D3D3;"></span>
+            <span>&nbsp; Table: </span>
+            <select @onchange="OnSelectedTableChanged" style="width: 300px; border-block:hidden">
+                @foreach (var tableName in tableNames)
+                {
+                    <option value="@tableName">@tableName</option>
+                }
+            </select>
+        </div>
+        <div style="overflow-y: auto; overflow-x: scroll; width: 800px; height: 400px;">
+           <Datasheet @ref="_datasheet"               
+                       Sheet="sheet"
+                       Virtualise="true"
+                       CanUserMergeRows="false"
+                       ShowColHeadings="true"
+                       ShowRowHeadings="true"
+                       CanUserInsertRows="true"
+                       CanUserRemoveRows="true"
+                       CanUserInsertCols="false"
+                       CanUserRemoveCols="false"
+                       CanUserSort="false" />
+        </div>
+        <br />
+        @if (Message != "")
+        {
+            <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+                <b>Result: </b>
+                <span>@Message</span>
+            </div>
+        }
+    }
+}
+@code {
+    string FabricConnectionString = "";
+    string AzureStorageConnectionString = "";
+
+    string FabricConnectionStringStatusMessage = "Not Set";
+    string AzureStorageConnectionStringStatusMessage = "Not Set";
+
+    private bool ShowConnectionDialog { get; set; } = false;
+    private bool ShowAzureConnectionDialog { get; set; } = false;
+    private bool showStatusDialog { get; set; } = false;
+
+    bool isLoading { get; set; } = false;
+    bool isReadyForImport { get; set; } = false;
+    bool ShowStatusDialog { get; set; } = false;
+
+    List<string> tableNames = new List<string> { };
+    string selectedTable { get; set; } = "";
+    string Message { get; set; } = "";
+
+    private string ConnectionType = "";
+    private string DatabaseName = "";
+    private string DatabasePassword = "";
+    private string DatabaseUsername = "";
+    private string IntegratedSecurityDisplay = "";
+    private string ServerName = "";
+
+    private string StorageAccountName = "";
+    private string ContainerName = "";
+    private string AccountKey = "";
+
+    private Datasheet _datasheet;
+    private Sheet sheet;
+
+    bool UseValidation = false;
+    bool SavingDisabled = false;
+    string ErrorMessage = "";
+
+    List<string> colGeneralErrors = new List<string>();
+
+    List<DTODatabaseColumn> TableColumns = new List<DTODatabaseColumn>();
+    List<string> PrimaryKeys = new List<string>();
+    List<int> ColChangedRows = new List<int>();
+
+    DataTable OriginalDataTable;
+    DataTable CurrentDataTable;
+
+    // For the TimeEditorComponent and TimeRenderer
+    private Dictionary<string, CellTypeDefinition> CustomTypes { get; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Create a new datasheet
+        sheet = new Sheet(numRows: 100000, numCols: 20000);
+
+        await base.OnInitializedAsync();
+
+        // Wait 1 second before loading the table data
+        // to join the UI thread
+        await Task.Delay(1000);
+    }
+
+    #region Datasheet Events
+    private void btnSave()
+    {
+        try
+        {
+            SaveData();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.GetBaseException().Message;
+        }
+    }
+
+    private void InsertRowAfterSelection()
+    {
+        if (sheet.Selection.ActiveRegion == null)
+        {
+            return;
+        }
+
+        sheet.Rows.InsertAt(sheet.Selection.ActiveRegion.TopLeft.row);
+    }
+
+    private void RemoveRow()
+    {
+        if (sheet.Selection.ActiveRegion == null)
+        {
+            return;
+        }
+
+        sheet.Rows.RemoveAt(sheet.Selection.ActiveRegion.Top);
+    }
+    #endregion
+
+    #region private void CellChaged(object sender, CellDataChangedEventArgs args)
+    private void CellChanged(object sender, CellDataChangedEventArgs args)
+    {
+        // Only add the row if one cell is changed
+        if ((args.Positions.Count() > 0) && (args.Positions.Count() < 2))
+        {
+            // Get the row number
+            int row = Convert.ToInt32(args.Positions.FirstOrDefault().row);
+
+            // Use that row number to get the hidden _Id value
+            int _Id = Convert.ToInt32(sheet.Cells[row, 0].Value);
+
+            // Add the row to the list of changed rows
+            ColChangedRows.Add(_Id);
+        }
+    }
+    #endregion
+
+    // ********************************************************************************************************************
+    // Database Connection
+    // ********************************************************************************************************************
+
+    #region private void OpenShowConnectionDialogFabric()
+    private void OpenShowConnectionDialogFabric()
+    {
+        var fabricSettings = ConnectionSettings.Fabric;
+
+        ConnectionType = "Fabric";
+        DatabaseName = fabricSettings.DatabaseName;
+        DatabasePassword = fabricSettings.DatabasePassword;
+        DatabaseUsername = fabricSettings.DatabaseUsername;
+        IntegratedSecurityDisplay = fabricSettings.IntegratedSecurityDisplay;
+        ServerName = fabricSettings.ServerName;
+
+        ShowConnectionDialog = true;
+    }
+    #endregion
+
+    #region private void OpenShowConnectionDialogAzureStorage()
+    private void OpenShowConnectionDialogAzureStorage()
+    {
+        var azureStorageSettings = ConnectionSettings.AzureStorage;
+
+        ConnectionType = "AzureStorage";
+        StorageAccountName = azureStorageSettings.StorageAccountName;
+        ContainerName = azureStorageSettings.ContainerName;
+        AccountKey = azureStorageSettings.AccountKey;
+
+        ShowAzureConnectionDialog = true;
+    }
+    #endregion
+
+    #region private void CloseShowConnectionDialog()
+    private void CloseShowConnectionDialog()
+    {
+        ShowConnectionDialog = false;
+    }
+    #endregion
+
+    #region private void CloseAzureConnectionDialog()
+    private void CloseAzureConnectionDialog()
+    {
+        ShowAzureConnectionDialog = false;
+    }
+    #endregion
+
+    #region private void SetConnectionString(string strConnectionString)
+    private void SetConnectionString(string strConnectionString)
+    {
+        // Set the connection string to the global variable
+
+        if (ConnectionType == "Fabric")
+        {
+            FabricConnectionString = strConnectionString;
+
+            if (FabricConnectionString != "")
+            {
+                FabricConnectionStringStatusMessage = "Set";
+            }
+        }
+
+        if (ConnectionType == "AzureStorage")
+        {
+            AzureStorageConnectionString = strConnectionString;
+
+            if (AzureStorageConnectionString != "")
+            {
+                AzureStorageConnectionStringStatusMessage = "Set";
+            }
+        }
+
+        ShowConnectionDialog = false;
+        ShowAzureConnectionDialog = false;
+
+        if ((FabricConnectionString != "") && (AzureStorageConnectionString != ""))
+        {
+            isReadyForImport = true;
+            GetTablesInDatabase();
+        }
+    }
+    #endregion
+
+    #region private async Task OnSelectedTableChanged(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    private async Task OnSelectedTableChanged(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    {
+        selectedTable = e.Value.ToString();
+
+        // Wait 1 second before loading the table data
+        // to join the UI thread
+        await Task.Delay(1000);
+
+        LoadTableData(selectedTable);
+    }
+    #endregion
+
+    // ********************************************************************************************************************
+    // Load Data
+    // ********************************************************************************************************************
+
+    #region private void GetTablesInDatabase()
+    private void GetTablesInDatabase()
+    {
+        tableNames = new List<string>();
+
+        // Use the FabricConnectionString to get the tables in the database
+        using (SqlConnection connection = new SqlConnection(FabricConnectionString))
+        {
+            connection.Open();
+
+            // Get the tables in the database
+            DataTable dt = connection.GetSchema("Tables");
+
+            // Get the table names
+            foreach (DataRow row in dt.Rows)
+            {
+                // Ensure that the table is not a system table
+                if (row[3].ToString() == "BASE TABLE")
+                {
+                    string tablename = $"[{(string)row[1]}].[{(string)row[2]}]";
+                    tableNames.Add(tablename);
+                }
+            }
+
+            connection.Close();
+
+            // order the table names
+            tableNames.Sort();
+
+            // Set the value to the first table
+            if (tableNames.Count > 0)
+            {
+                selectedTable = tableNames[0];
+            }
+        }
+    }
+    #endregion
+
+    #region private void LoadTableData(string paramSelectedTable)
+    private void LoadTableData(string paramSelectedTable)
+    {
+        ErrorMessage = "";
+        selectedTable = paramSelectedTable;
+
+        isLoading = true;
+        StateHasChanged();
+
+        // Use the DatabaseConnectionString to get the data from the selected table
+        using (SqlConnection connection = new SqlConnection(FabricConnectionString))
+        {
+            connection.Open();
+
+            try
+            {
+                // Clear the list of changed rows
+                ColChangedRows = new List<int>();
+
+                // Get the primary keys for the table
+                PrimaryKeys = GetPrimaryKey(connection, selectedTable);
+
+                // Get the computed columns for the table
+                List<string> ComputedColumns = GetComputedColumns(connection, selectedTable);
+
+                // Get a list of the column names
+                TableColumns = new List<DTODatabaseColumn>();
+
+                DataTable Columns = connection.GetSchema("Columns");
+
+                foreach (DataRow row in Columns.Rows)
+                {
+                    if ($"[{row["TABLE_SCHEMA"].ToString()}].[{row["TABLE_NAME"].ToString()}]" == selectedTable)
+                    {
+                        DTODatabaseColumn objTableColumns = new DTODatabaseColumn();
+
+                        objTableColumns.ColumnName = row["COLUMN_NAME"].ToString();
+                        objTableColumns.ColumnType = row["DATA_TYPE"].ToString();
+
+                        if (row["CHARACTER_MAXIMUM_LENGTH"] != DBNull.Value)
+                        {
+                            objTableColumns.ColumnLength = Convert.ToInt32(row["CHARACTER_MAXIMUM_LENGTH"]);
+                        }
+                        else
+                        {
+                            objTableColumns.ColumnLength = 0;
+                        }
+
+                        if (PrimaryKeys.Contains(row["COLUMN_NAME"].ToString()))
+                        {
+                            objTableColumns.IsPrimaryKey = true;
+                        }
+                        else
+                        {
+                            objTableColumns.IsPrimaryKey = false;
+                        }
+
+                        TableColumns.Add(objTableColumns);
+                    }
+                }
+
+                // Remove from TableColumns any colums types of unique identifiers
+                TableColumns = TableColumns.Where(x => x.ColumnType != "uniqueidentifier").ToList();
+
+                // Remove from TableColumns any colums types of hierarchyid
+                TableColumns = TableColumns.Where(x => x.ColumnType != "hierarchyid").ToList();
+
+                // Remove from TableColumns any colums types of varbinary
+                TableColumns = TableColumns.Where(x => x.ColumnType != "varbinary").ToList();
+
+                // Remove from TableColumns any colums types of geography
+                TableColumns = TableColumns.Where(x => x.ColumnType != "geography").ToList();
+
+                // Remove from TableColumns any colums types of computed
+                // remove colums conatined in the ComputedColumns list
+                TableColumns = TableColumns.Where(x => !ComputedColumns.Contains(x.ColumnName)).ToList();
+
+                // Get Table names from TableColumns as comma seperated values
+                string strTableNames = string.Join(",", TableColumns.Select(x => $"[{x.ColumnName}]").ToArray());
+
+                string sql = "";
+
+                // See if there are any primary keys
+                if (PrimaryKeys.Count == 0)
+                {
+                    SavingDisabled = true;
+
+                    // Get the data from the selected table
+                    sql = $"SELECT 0 AS _Id, {strTableNames} FROM {selectedTable}";
+                }
+                else
+                {
+                    SavingDisabled = false;
+
+                    // Turn PrimaryKeys into a comma seperated string
+                    string strPrimaryKeys = string.Join(",", PrimaryKeys.Select(x => $"[{x}]").ToArray());
+
+                    // Get the data from the selected table
+                    sql = $"SELECT ROW_NUMBER() OVER (ORDER BY {strPrimaryKeys}) AS _Id, {strTableNames} FROM {selectedTable}";
+                }
+
+                SqlDataAdapter adapter = new SqlDataAdapter(sql, connection);
+                DataTable dt = new DataTable();
+                adapter.Fill(dt);
+
+                connection.Close();
+
+                // Save the original data
+                OriginalDataTable = dt.Copy();
+
+                // Make the first column _Id
+                TableColumns.Insert(0, new DTODatabaseColumn { ColumnName = "_Id", ColumnType = "int", ColumnLength = 0, IsPrimaryKey = true });
+
+                // Load Data into the Datasheet
+                LoadTableHeadersAndData(TableColumns, dt);
+            }
+            catch (Exception ex)
+            {
+                ErrorMessage = ex.GetBaseException().Message;
+
+                if (connection.State == ConnectionState.Open)
+                {
+                    connection.Close();
+                }
+
+                isLoading = false;
+                StateHasChanged();
+            }
+        }
+
+        isLoading = false;
+        StateHasChanged();
+    }
+    #endregion
+
+    #region private void LoadTableHeadersAndData(List<DTODatabaseColumn> paramDatabaseColumns, DataTable paramDataTable)
+    private void LoadTableHeadersAndData(List<DTODatabaseColumn> paramDatabaseColumns, DataTable paramDataTable)
+    {
+        // Create sheet with the number of columns
+        sheet = new Sheet(paramDataTable.Rows.Count, paramDatabaseColumns.Count);
+
+        // Turn off history
+        sheet.BatchUpdates();
+        sheet.Commands.PauseHistory();
+
+        // Hide the _Id column
+        sheet.Columns.Hide(0, 1);
+
+        int i = 0;
+        foreach (DTODatabaseColumn objDatabaseColumn in paramDatabaseColumns)
+        {
+            // Set the column headings
+            sheet.Columns.SetHeadings(i, i, objDatabaseColumn.ColumnName);
+
+            // Set the column types
+            sheet.Cells.SetType(new ColumnRegion(i), objDatabaseColumn.ColumnType);
+
+            if (UseValidation)
+            {
+                // Integer Validator
+                if (objDatabaseColumn.ColumnType.Contains("int"))
+                {
+                    sheet.Validators.Add(new ColumnRegion(i), new NumberValidator(false));
+                }
+
+                // Length Validator
+                if (objDatabaseColumn.ColumnLength > 0)
+                {
+                    if (objDatabaseColumn.ColumnType.Contains("char"))
+                    {
+                        sheet.Validators.Add(new ColumnRegion(i), new LengthValidator(objDatabaseColumn.ColumnLength, true));
+                    }
+                }
+            }
+
+            i++;
+        }
+
+        // Load the data into the sheet
+        int ii = 0;
+        foreach (DataRow dataRow in paramDataTable.Rows)
+        {
+            i = 0;
+            foreach (DTODatabaseColumn objDatabaseColumn in paramDatabaseColumns)
+            {
+                // Set the cell value
+                sheet.Cells[ii, i].Value = GetCellValue(dataRow[i].ToString(), objDatabaseColumn.ColumnType);
+
+                if (objDatabaseColumn.IsPrimaryKey)
+                {
+                    // Set the cell to read only if it is a primary key
+                    sheet.Cells[ii, i].Format = new CellFormat() { IsReadOnly = true, BackgroundColor = "lightgrey" };
+                }
+
+                i++;
+            }
+
+            ii++;
+        }
+
+        // Wire up a method to catch cell changes
+        sheet.Cells.CellsChanged += CellChanged;
+
+        // Wire up a method to catch row changes
+        // Do not allow the last row to be deleted
+        sheet.Rows.Removed += (sender, args) =>
+        {
+            // Turn off history
+            sheet.BatchUpdates();
+            sheet.Commands.PauseHistory();
+
+            if (sheet.NumRows == 0)
+            {
+                sheet.Rows.InsertAt(0);
+            }
+
+            // Turn off history
+            sheet.EndBatchUpdates();
+            sheet.Commands.ResumeHistory();
+        };
+
+        // Turn on history
+        sheet.EndBatchUpdates();
+        sheet.Commands.ResumeHistory();
+    }
+    #endregion
+
+    // ********************************************************************************************************************
+    // Save Data
+    // ********************************************************************************************************************
+
+    #region private void SaveData()
+    private void SaveData()
+    {
+        isLoading = true;
+
+        // // Use the FabricConnectionString to get the tables in the database
+        // using (SqlConnection connection = new SqlConnection(FabricConnectionString))
+        // {
+        //     connection.Open();
+
+        //     // Get the data from the selected table
+        //     string sql = $"SELECT * FROM {selectedTable}";
+        //     SqlDataAdapter adapter = new SqlDataAdapter(sql, connection);
+        //     DataTable dt = new DataTable();
+        //     adapter.Fill(dt);
+
+        //     // Save the data to the Azure Storage
+        //     using (AzureStorage azureStorage = new AzureStorage(AzureStorageConnectionString))
+        //     {
+        //         azureStorage.SaveData(dt, selectedTable);
+        //     }
+
+        //     connection.Close();
+        // }
+
+        isLoading = false;
+        Message = "Data saved successfully";
+    }
+    #endregion
+
+    // ********************************************************************************************************************
+    // Utility
+    // ********************************************************************************************************************
+
+    #region public List<string> GetPrimaryKey(SqlConnection connection, string tableName)
+    public List<string> GetPrimaryKey(SqlConnection connection, string tableName)
+    {
+        List<string> PrimaryKeys = new List<string>();
+
+        try
+        {
+            string query = $@"
+                SELECT c.Name
+                FROM sys.index_columns ic
+                INNER JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+                INNER JOIN sys.indexes i ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+                WHERE i.is_primary_key = 1 AND ic.object_id = OBJECT_ID('{tableName}')";
+
+            using (SqlCommand command = new SqlCommand(query, connection))
+            {
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (reader["Name"] != DBNull.Value)
+                        {
+                            PrimaryKeys.Add(reader["Name"].ToString());
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+
+        return PrimaryKeys;
+    }
+    #endregion
+
+    #region public List<string> GetComputedColumns(SqlConnection connection, string tableName)
+    public List<string> GetComputedColumns(SqlConnection connection, string tableName)
+    {
+        List<string> ComputedColumns = new List<string>();
+
+        try
+        {
+            string query = $@"
+                                SELECT name AS ColumnName
+                                FROM sys.columns
+                                WHERE object_id = OBJECT_ID('{tableName}') AND is_computed = 1";
+
+            using (SqlCommand command = new SqlCommand(query, connection))
+            {
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        if (reader["ColumnName"] != DBNull.Value)
+                        {
+                            ComputedColumns.Add(reader["ColumnName"].ToString());
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+
+        return ComputedColumns;
+    }
+    #endregion
+
+    #region public List<string> GetIdentityColumns(SqlConnection connection, string tableName)
+    public List<string> GetIdentityColumns(SqlConnection connection, string tableName)
+    {
+        List<string> identityColumns = new List<string>();
+
+        string strTableNameCleaned = StripTableSchemaAndBrackets(tableName);
+
+        try
+        {
+            string query = $@"
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME like '%{strTableNameCleaned}%'
+              AND COLUMNPROPERTY(OBJECT_ID(TABLE_SCHEMA + '.' + TABLE_NAME), COLUMN_NAME, 'IsIdentity') = 1";
+
+            using (SqlCommand command = new SqlCommand(query, connection))
+            {
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (reader["COLUMN_NAME"] != DBNull.Value)
+                        {
+                            identityColumns.Add(reader["COLUMN_NAME"].ToString());
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Handle exception (optional logging or rethrowing)
+            Console.WriteLine($"An error occurred: {ex.Message}");
+        }
+        finally
+        {
+            if (connection.State == ConnectionState.Open)
+            {
+                connection.Close();
+            }
+        }
+
+        return identityColumns;
+    }
+    #endregion
+
+    #region public System.Type GetColumnType(string paramType)
+    public System.Type GetColumnType(string paramType)
+    {
+        Type ReturnType = typeof(string);
+
+        if (paramType.Contains("int"))
+        {
+            return typeof(int);
+        }
+
+        if (paramType.StartsWith("time"))
+        {
+            return typeof(TimeSpan);
+        }
+
+        if (paramType.Contains("char"))
+        {
+            return typeof(string);
+        }
+
+        if (paramType.Contains("date"))
+        {
+            return typeof(DateTime);
+        }
+
+        return ReturnType;
+    }
+    #endregion
+
+    #region static string StripTableSchemaAndBrackets(string input)
+    static string StripTableSchemaAndBrackets(string input)
+    {
+        // Remove the square brackets
+        input = input.Replace("[", "").Replace("]", "");
+
+        // Find the position of the dot
+        int dotIndex = input.IndexOf('.');
+
+        // Extract the substring after the dot
+        if (dotIndex >= 0 && dotIndex < input.Length - 1)
+        {
+            input = input.Substring(dotIndex + 1);
+        }
+
+        return input;
+    }
+    #endregion
+
+    #region private object GetCellValue(object columnValue, string columnType)
+    private object GetCellValue(object columnValue, string columnType)
+    {
+        try
+        {
+            if (columnType.Contains("int"))
+            {
+                if (columnValue == DBNull.Value)
+                {
+                    return DBNull.Value;
+                }
+                else
+                {
+                    return Convert.ToInt32(columnValue);
+                }
+            }
+
+            if (columnType.Contains("char"))
+            {
+                if (columnValue == DBNull.Value)
+                {
+                    return DBNull.Value;
+                }
+                else
+                {
+                    return columnValue.ToString();
+                }
+            }
+
+            if (columnType.StartsWith("time"))
+            {
+                if (columnValue == DBNull.Value)
+                {
+                    return DBNull.Value;
+                }
+                else
+                {
+                    return TimeSpan.Parse(columnValue.ToString());
+                }
+            }
+
+            if (columnType.Contains("date"))
+            {
+                if (columnValue == DBNull.Value)
+                {
+                    return DBNull.Value;
+                }
+                else
+                {
+                    return Convert.ToDateTime(columnValue);
+                }
+            }
+        }
+        catch
+        {
+            return columnValue;
+        }
+
+        return columnValue;
+    }
+    #endregion
+
+    #region private SqlDbType GetSQLParameterType(string columnType)
+    private SqlDbType GetSQLParameterType(string columnType)
+    {
+        SqlDbType sqlDbType = SqlDbType.NVarChar;
+
+        if (columnType.Contains("int"))
+        {
+            sqlDbType = SqlDbType.Int;
+        }
+
+        if (columnType.Contains("char"))
+        {
+            sqlDbType = SqlDbType.NVarChar;
+        }
+
+        if (columnType.Contains("time"))
+        {
+            sqlDbType = SqlDbType.Time;
+        }
+
+        if (columnType.Contains("date"))
+        {
+            sqlDbType = SqlDbType.DateTime;
+        }
+
+        return sqlDbType;
+    }
+    #endregion
+
+    // ********************************************************************************************************************
+    // Validators
+    // ********************************************************************************************************************
+
+    #region private class LengthValidator : IDataValidator
+    private class LengthValidator : IDataValidator
+    {
+        private readonly int _length;
+        public bool IsStrict { get; }
+        public string Message => $"Maximum length is {_length}";
+
+        public LengthValidator(int Length, bool isStrict)
+        {
+            IsStrict = isStrict;
+            _length = Length;
+        }
+
+        public bool IsValid(CellValue value)
+        {
+            try
+            {
+                var str = Convert.ToString(value.Data!);
+                return str.Length <= _length;
+            }
+            catch
+            {
+                return true;
+            }
+        }
+    }
+    #endregion
+}

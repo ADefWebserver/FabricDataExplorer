@@ -1,3 +1,4 @@
+using BlazorDatasheet.Extensions;
 using FabricDataExplorer.Components;
 
 namespace FabricDataExplorer
@@ -13,6 +14,8 @@ namespace FabricDataExplorer
             builder.Services.AddSingleton<ConnectionSettingsService>();
 
             builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+
+            builder.Services.AddBlazorDatasheet();
 
             var app = builder.Build();
 
