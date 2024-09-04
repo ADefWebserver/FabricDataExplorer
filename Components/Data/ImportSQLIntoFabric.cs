@@ -9,7 +9,7 @@ using System.Data;
 using System.Text;
 using System.Text.RegularExpressions;
 
-public class ImportIntoFabric
+public class ImportSQLIntoFabric
 {
     public string SqlQuery { get; set; }
     public string TableName { get; set; }
@@ -19,7 +19,7 @@ public class ImportIntoFabric
     public string StorageAccountKey { get; set; }
     public string StorageContainer { get; set; }
 
-    public ImportIntoFabric()
+    public ImportSQLIntoFabric()
     {
         // set default values
         SqlQuery = "";

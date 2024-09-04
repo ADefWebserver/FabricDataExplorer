@@ -313,8 +313,8 @@ else
             string columnString = string.Join(",", columns);
             string sqlQuery = $"SELECT ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS _Id,{columnString} FROM {selectedTable}";
 
-            // Call ImportIntoFabric
-            ImportIntoFabric importIntoFabric = new ImportIntoFabric();
+            // Call ImportSQLIntoFabric
+            ImportSQLIntoFabric importIntoFabric = new ImportSQLIntoFabric();
 
             importIntoFabric.SqlQuery = sqlQuery;
             importIntoFabric.TableName = RemoveSchema(selectedTable);
