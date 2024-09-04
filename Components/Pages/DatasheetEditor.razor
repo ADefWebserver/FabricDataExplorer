@@ -165,7 +165,6 @@ else
 
     List<DTODatabaseColumn> TableColumns = new List<DTODatabaseColumn>();
     List<string> PrimaryKeys = new List<string>();
-    List<int> ColChangedRows = new List<int>();
 
     DataTable OriginalDataTable;
     DataTable CurrentDataTable;
@@ -216,24 +215,6 @@ else
         }
 
         sheet.Rows.RemoveAt(sheet.Selection.ActiveRegion.Top);
-    }
-    #endregion
-
-    #region private void CellChaged(object sender, CellDataChangedEventArgs args)
-    private void CellChanged(object sender, CellDataChangedEventArgs args)
-    {
-        // Only add the row if one cell is changed
-        if ((args.Positions.Count() > 0) && (args.Positions.Count() < 2))
-        {
-            // Get the row number
-            int row = Convert.ToInt32(args.Positions.FirstOrDefault().row);
-
-            // Use that row number to get the hidden _Id value
-            int _Id = Convert.ToInt32(sheet.Cells[row, 0].Value);
-
-            // Add the row to the list of changed rows
-            ColChangedRows.Add(_Id);
-        }
     }
     #endregion
 
@@ -393,9 +374,6 @@ else
 
             try
             {
-                // Clear the list of changed rows
-                ColChangedRows = new List<int>();
-
                 // Get the primary keys for the table
                 PrimaryKeys = GetPrimaryKey(connection, selectedTable);
 
@@ -576,9 +554,6 @@ else
 
             ii++;
         }
-
-        // Wire up a method to catch cell changes
-        sheet.Cells.CellsChanged += CellChanged;
 
         // Wire up a method to catch row changes
         // Do not allow the last row to be deleted
