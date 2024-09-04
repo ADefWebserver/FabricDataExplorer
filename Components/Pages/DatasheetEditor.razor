@@ -85,6 +85,14 @@ else
                 <i class="material-icons" style="color:black;">redo</i>
             </button>
             <span style="border-right: 2px solid #D3D3D3;"></span>
+            <button @onclick="InsertRowAfterSelection" title="Insert Row" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">input</i>
+            </button>
+            <button @onclick="RemoveRow" title="Delete Row" style="background:none;border:none;">
+                <i class="material-icons" style="color:black;">logout</i>
+            </button>
+            <span style="border-right: 2px solid #D3D3D3;"></span>
+            <span style="border-right: 2px solid #D3D3D3;"></span>
             <span>&nbsp; Table: </span>
             <select @onchange="OnSelectedTableChanged" style="width: 300px; border-block:hidden">
                 @foreach (var tableName in tableNames)
@@ -363,6 +371,7 @@ else
             if (tableNames.Count > 0)
             {
                 selectedTable = tableNames[0];
+                LoadTableData(selectedTable);
             }
         }
     }
