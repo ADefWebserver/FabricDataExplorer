@@ -185,14 +185,15 @@ else
     }
 
     #region Datasheet Events
-    private void btnSave()
+    private async Task btnSave()
     {
         try
         {
-            SaveData();
+            await SaveData();
         }
         catch (Exception ex)
         {
+            isLoading = false;
             ErrorMessage = ex.GetBaseException().Message;
         }
     }
@@ -583,32 +584,122 @@ else
     // Save Data
     // ********************************************************************************************************************
 
-    #region private void SaveData()
-    private void SaveData()
+    #region private async Task SaveData()
+    private async Task SaveData()
     {
         isLoading = true;
 
-        // // Use the FabricConnectionString to get the tables in the database
-        // using (SqlConnection connection = new SqlConnection(FabricConnectionString))
-        // {
-        //     connection.Open();
+        // Initialize a new DataTable
+        CurrentDataTable = new DataTable();
 
-        //     // Get the data from the selected table
-        //     string sql = $"SELECT * FROM {selectedTable}";
-        //     SqlDataAdapter adapter = new SqlDataAdapter(sql, connection);
-        //     DataTable dt = new DataTable();
-        //     adapter.Fill(dt);
+        // Define columns based on TableColumns
+        // Do not include the first _Id column
+        foreach (var column in TableColumns.Skip(1))
+        {
+            CurrentDataTable.Columns.Add(new DataColumn(column.ColumnName, GetColumnType(column.ColumnType)));
+        }
 
-        //     // Save the data to the Azure Storage
-        //     using (AzureStorage azureStorage = new AzureStorage(AzureStorageConnectionString))
-        //     {
-        //         azureStorage.SaveData(dt, selectedTable);
-        //     }
+        // Populate the DataTable with rows from the sheet
+        // Do not include the first _Id column
+        for (int i = 0; i < sheet.NumRows; i++)
+        {
+            DataRow row = CurrentDataTable.NewRow();
 
-        //     connection.Close();
-        // }
+            for (int j = 0; j < TableColumns.Count; j++)
+            {
+                try
+                {
+                    if ((sheet.Cells[i, j].Value != null) && (sheet.Cells[i, j].Value != DBNull.Value))
+                    {
+                        if (CurrentDataTable.Columns[j].DataType.FullName == "System.Int32")
+                        {
+                            if (sheet.Cells[i, j]?.Value?.ToString() == "")
+                            {
+                                row[j] = DBNull.Value;
+                            }
+                            else
+                            {
+                                row[j] = Convert.ToInt32(sheet.Cells[i, j].Value);
+                            }
+                        }
+                        else if (CurrentDataTable.Columns[j].DataType.FullName == "System.DateTime")
+                        {
+                            if (sheet.Cells[i, j]?.Value?.ToString() == "")
+                            {
+                                row[j] = DBNull.Value;
+                            }
+                            else
+                            {
+                                row[j] = Convert.ToDateTime(sheet.Cells[i, j].Value);
+                            }
+                        }
+                        else if (CurrentDataTable.Columns[j].DataType.FullName == "System.TimeSpan")
+                        {
+                            if (sheet.Cells[i, j]?.Value?.ToString() == "")
+                            {
+                                row[j] = DBNull.Value;
+                            }
+                            else
+                            {
+                                var TimeSpanValue = sheet.Cells[i, j].Value.ToString();
+
+                                if (DateTime.TryParse(TimeSpanValue, out var parsedDateTime))
+                                {
+                                    row[j] = parsedDateTime.TimeOfDay.ToString();
+                                }
+                                else if (TimeSpan.TryParse(TimeSpanValue, out var parsedTimeSpan))
+                                {
+                                    row[j] = parsedTimeSpan;
+                                }
+                                else
+                                {
+                                    row[j] = TimeSpanValue;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            string currentValue = "";
+
+                            currentValue = sheet.Cells[i, j].Value?.ToString() ?? "";
+
+                            currentValue = currentValue.Replace("\r\n", " ")
+                                                       .Replace("\t", " ")
+                                                       .Replace("\r", " ")
+                                                       .Replace("\n", " ")
+                                                       .Trim();
+
+                            row[j] = currentValue;
+                        }
+                    }
+                    else
+                    {
+                        row[j] = CurrentDataTable.Columns[j].DefaultValue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    colGeneralErrors.Add(ex.GetBaseException().Message);
+                }
+            }
+
+            CurrentDataTable.Rows.Add(row);
+        }
+
+        ImportDataTableIntoFabric importIntoFabric = new ImportDataTableIntoFabric();
+
+        importIntoFabric.InputDataTable = CurrentDataTable;
+        importIntoFabric.TableName = RemoveSchema(selectedTable);
+        importIntoFabric.DataWarehouseConnectionString = FabricConnectionString;
+        importIntoFabric.StorageAccountName = StorageAccountName;
+        importIntoFabric.StorageContainer = ContainerName;
+        importIntoFabric.StorageAccountKey = AccountKey;
+
+        Message = await importIntoFabric.ImportData();
+        StateHasChanged();
 
         isLoading = false;
+
         Message = "Data saved successfully";
     }
     #endregion
@@ -865,6 +956,23 @@ else
         }
 
         return sqlDbType;
+    }
+    #endregion
+
+    #region static string RemoveSchema(string input)
+    static string RemoveSchema(string input)
+    {
+        int startIndex = input.IndexOf('[') + 1;
+        int endIndex = input.IndexOf(']');
+
+        if (startIndex < 0 || endIndex < 0 || startIndex >= endIndex)
+        {
+            throw new ArgumentException("Invalid input format");
+        }
+
+        string tableName = input.Substring(endIndex + 2);
+
+        return tableName;
     }
     #endregion
 

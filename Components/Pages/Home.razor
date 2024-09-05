@@ -104,11 +104,9 @@ else
 
     private bool ShowConnectionDialog { get; set; } = false;
     private bool ShowAzureConnectionDialog { get; set; } = false;
-    private bool showStatusDialog { get; set; } = false;
 
     bool isLoading { get; set; } = false;
     bool isReadyForImport { get; set; } = false;
-    bool ShowStatusDialog { get; set; } = false;
 
     List<string> tableNames = new List<string> { };
     string selectedTable { get; set; } = "";
@@ -325,7 +323,6 @@ else
             importIntoFabric.StorageAccountKey = AccountKey;
 
             Message = await importIntoFabric.ImportData();
-            showStatusDialog = true;
             StateHasChanged();
         }
 

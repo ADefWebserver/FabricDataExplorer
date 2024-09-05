@@ -18,10 +18,9 @@ public class ImportDataTableIntoFabric
     public string StorageAccountKey { get; set; }
     public string StorageContainer { get; set; }
 
-    public ImportDataTableIntoFabric(DataTable dataTable)
+    public ImportDataTableIntoFabric()
     {
-        // Set default values and pass the DataTable
-        InputDataTable = dataTable;
+        InputDataTable = new DataTable();
         TableName = "";
         DataWarehouseConnectionString = "";
         StorageAccountName = "";
