@@ -41,87 +41,86 @@
                                   OnSetConnection="SetConnectionString" />
 }
 
-@if (isLoading)
-{
+
+<div>
     <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
-        <span>Processing...</span>
+        <button @onclick="OpenShowConnectionDialogFabric" title="Settings" style="background:none;border:none;margin-top: 5px;">
+            <i class="material-icons" style="color:black;">settings</i>
+        </button>
+        <b>Fabric Connection: </b>
+        <span style="color:@(FabricConnectionStringStatusMessage == "Set" ? "green" : "red")">
+            @FabricConnectionStringStatusMessage
+        </span>
     </div>
-}
-else
+    <br />
+    <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+        <button @onclick="OpenShowConnectionDialogAzureStorage" title="Settings" style="background:none;border:none;margin-top: 5px;">
+            <i class="material-icons" style="color:black;">settings</i>
+        </button>
+        <b>Azure Storage Connection: </b>
+        <span style="color:@(AzureStorageConnectionStringStatusMessage == "Set" ? "green" : "red")">
+            @AzureStorageConnectionStringStatusMessage
+        </span>
+    </div>
+</div>
+@if (isReadyForImport)
 {
-    <div>
-        <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
-            <button @onclick="OpenShowConnectionDialogFabric" title="Settings" style="background:none;border:none;margin-top: 5px;">
-                <i class="material-icons" style="color:black;">settings</i>
-            </button>
-            <b>Fabric Connection: </b>
-            <span style="color:@(FabricConnectionStringStatusMessage == "Set" ? "green" : "red")">
-                @FabricConnectionStringStatusMessage
-            </span>
-        </div>
-        <br />
-        <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
-            <button @onclick="OpenShowConnectionDialogAzureStorage" title="Settings" style="background:none;border:none;margin-top: 5px;">
-                <i class="material-icons" style="color:black;">settings</i>
-            </button>
-            <b>Azure Storage Connection: </b>
-            <span style="color:@(AzureStorageConnectionStringStatusMessage == "Set" ? "green" : "red")">
-                @AzureStorageConnectionStringStatusMessage
-            </span>
-        </div>
+    <br />
+    <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+        <button @onclick="btnSave" disabled="@SavingDisabled" style="background:none;border:none;">
+            <i class="material-icons" style="color:black;">save</i>
+        </button>
+        <span style="border-right: 2px solid #D3D3D3;"></span>
+        <button @onclick="() => sheet.Commands.Undo()" title="Undo" style="background:none;border:none;">
+            <i class="material-icons" style="color:black;">undo</i>
+        </button>
+        <button @onclick="() => sheet.Commands.Redo()" title="Redo" style="background:none;border:none;">
+            <i class="material-icons" style="color:black;">redo</i>
+        </button>
+        <span style="border-right: 2px solid #D3D3D3;"></span>
+        <button @onclick="InsertRowAfterSelection" title="Insert Row" style="background:none;border:none;">
+            <i class="material-icons" style="color:black;">input</i>
+        </button>
+        <button @onclick="RemoveRow" title="Delete Row" style="background:none;border:none;">
+            <i class="material-icons" style="color:black;">logout</i>
+        </button>
+        <span style="border-right: 2px solid #D3D3D3;"></span>
+        <span style="border-right: 2px solid #D3D3D3;"></span>
+        <span>&nbsp; Table: </span>
+        <select @onchange="OnSelectedTableChanged" style="width: 300px; border-block:hidden">
+            @foreach (var tableName in tableNames)
+            {
+                <option value="@tableName">@tableName</option>
+            }
+        </select>
     </div>
-    @if (isReadyForImport)
-    {     
-        <br />
+    <div style="overflow-y: auto; overflow-x: scroll; width: 800px; height: 400px;">
+        <Datasheet @ref="_datasheet"
+                   Sheet="sheet"
+                   Virtualise="true"
+                   CanUserMergeRows="false"
+                   ShowColHeadings="true"
+                   ShowRowHeadings="true"
+                   CanUserInsertRows="true"
+                   CanUserRemoveRows="true"
+                   CanUserInsertCols="false"
+                   CanUserRemoveCols="false"
+                   CanUserSort="false" />
+    </div>
+    <br />
+    @if (Message != "")
+    {
         <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
-            <button @onclick="btnSave" disabled="@SavingDisabled" style="background:none;border:none;">
-                <i class="material-icons" style="color:black;">save</i>
-            </button>
-            <span style="border-right: 2px solid #D3D3D3;"></span>
-            <button @onclick="() => sheet.Commands.Undo()" title="Undo" style="background:none;border:none;">
-                <i class="material-icons" style="color:black;">undo</i>
-            </button>
-            <button @onclick="() => sheet.Commands.Redo()" title="Redo" style="background:none;border:none;">
-                <i class="material-icons" style="color:black;">redo</i>
-            </button>
-            <span style="border-right: 2px solid #D3D3D3;"></span>
-            <button @onclick="InsertRowAfterSelection" title="Insert Row" style="background:none;border:none;">
-                <i class="material-icons" style="color:black;">input</i>
-            </button>
-            <button @onclick="RemoveRow" title="Delete Row" style="background:none;border:none;">
-                <i class="material-icons" style="color:black;">logout</i>
-            </button>
-            <span style="border-right: 2px solid #D3D3D3;"></span>
-            <span style="border-right: 2px solid #D3D3D3;"></span>
-            <span>&nbsp; Table: </span>
-            <select @onchange="OnSelectedTableChanged" style="width: 300px; border-block:hidden">
-                @foreach (var tableName in tableNames)
-                {
-                    <option value="@tableName">@tableName</option>
-                }
-            </select>
+            <b>Result: </b>
+            <span>@Message</span>
         </div>
-        <div style="overflow-y: auto; overflow-x: scroll; width: 800px; height: 400px;">
-           <Datasheet @ref="_datasheet"               
-                       Sheet="sheet"
-                       Virtualise="true"
-                       CanUserMergeRows="false"
-                       ShowColHeadings="true"
-                       ShowRowHeadings="true"
-                       CanUserInsertRows="true"
-                       CanUserRemoveRows="true"
-                       CanUserInsertCols="false"
-                       CanUserRemoveCols="false"
-                       CanUserSort="false" />
+    }
+    else
+    {
+        <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
+            <b>Status: </b>
+            <span>@Status</span>
         </div>
-        <br />
-        @if (Message != "")
-        {
-            <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
-                <b>Result: </b>
-                <span>@Message</span>
-            </div>
-        }
     }
 }
 @code {
@@ -142,6 +141,7 @@ else
     List<string> tableNames = new List<string> { };
     string selectedTable { get; set; } = "";
     string Message { get; set; } = "";
+    string Status { get; set; } = "";
 
     private string ConnectionType = "";
     private string DatabaseName = "";
@@ -185,11 +185,11 @@ else
     }
 
     #region Datasheet Events
-    private async Task btnSave()
+    private void btnSave()
     {
         try
         {
-            await SaveData();
+            SaveData();
         }
         catch (Exception ex)
         {
@@ -366,7 +366,6 @@ else
         selectedTable = paramSelectedTable;
 
         isLoading = true;
-        StateHasChanged();
 
         // Use the DatabaseConnectionString to get the data from the selected table
         using (SqlConnection connection = new SqlConnection(FabricConnectionString))
@@ -482,12 +481,10 @@ else
                 }
 
                 isLoading = false;
-                StateHasChanged();
             }
         }
 
         isLoading = false;
-        StateHasChanged();
     }
     #endregion
 
@@ -584,11 +581,34 @@ else
     // Save Data
     // ********************************************************************************************************************
 
-    #region private async Task SaveData()
-    private async Task SaveData()
+    #region private void SaveData()
+    private void SaveData()
     {
         isLoading = true;
 
+        SetCurrentDataTable();
+
+        ImportDataTableIntoFabric importIntoFabric = new ImportDataTableIntoFabric();
+
+        importIntoFabric.InputDataTable = CurrentDataTable;
+        importIntoFabric.TableName = RemoveSchema(selectedTable);
+        importIntoFabric.DataWarehouseConnectionString = FabricConnectionString;
+        importIntoFabric.StorageAccountName = StorageAccountName;
+        importIntoFabric.StorageContainer = ContainerName;
+        importIntoFabric.StorageAccountKey = AccountKey;
+
+        isLoading = false;
+
+        Message = importIntoFabric.ImportData().Result;
+        StateHasChanged();
+
+        Message = "Data saved successfully";
+    }
+    #endregion
+
+    #region private void SetCurrentDataTable()
+    private void SetCurrentDataTable()
+    {
         // Initialize a new DataTable
         CurrentDataTable = new DataTable();
 
@@ -603,6 +623,8 @@ else
         // Do not include the first _Id column
         for (int i = 0; i < sheet.NumRows; i++)
         {
+            Status = $"Saving row {i + 1} of {sheet.NumRows}";
+
             DataRow row = CurrentDataTable.NewRow();
 
             for (int j = 0; j < TableColumns.Count; j++)
@@ -686,21 +708,7 @@ else
             CurrentDataTable.Rows.Add(row);
         }
 
-        ImportDataTableIntoFabric importIntoFabric = new ImportDataTableIntoFabric();
-
-        importIntoFabric.InputDataTable = CurrentDataTable;
-        importIntoFabric.TableName = RemoveSchema(selectedTable);
-        importIntoFabric.DataWarehouseConnectionString = FabricConnectionString;
-        importIntoFabric.StorageAccountName = StorageAccountName;
-        importIntoFabric.StorageContainer = ContainerName;
-        importIntoFabric.StorageAccountKey = AccountKey;
-
-        Message = await importIntoFabric.ImportData();
-        StateHasChanged();
-
-        isLoading = false;
-
-        Message = "Data saved successfully";
+        Status = $"Importing into Fabric...";
     }
     #endregion
 
