@@ -41,10 +41,10 @@
                                   OnSetConnection="SetConnectionString" />
 }
 
-@if(isLoading)
+@if (isLoading)
 {
     <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
-        <b>Loading...</b>
+        <span>Processing...</span>
     </div>
 }
 else
@@ -97,7 +97,14 @@ else
             <select @onchange="OnSelectedTableChanged" style="width: 300px; border-block:hidden">
                 @foreach (var tableName in tableNames)
                 {
-                    <option value="@tableName">@tableName</option>
+                    @if(tableName == selectedTable)
+                    {
+                        <option value="@tableName" selected>@tableName</option>
+                    }
+                    else
+                    {
+                        <option value="@tableName">@tableName</option>
+                    }
                 }
             </select>
         </div>
@@ -122,13 +129,6 @@ else
                 <span>@Message</span>
             </div>
         }
-        else
-        {
-            <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
-                <b>Status: </b>
-                <span>@Status</span>
-            </div>
-        }
     }
 }
 @code {
@@ -149,7 +149,6 @@ else
     List<string> tableNames = new List<string> { };
     string selectedTable { get; set; } = "";
     string Message { get; set; } = "";
-    string Status { get; set; } = "";
 
     private string ConnectionType = "";
     private string DatabaseName = "";
@@ -173,6 +172,7 @@ else
 
     List<DTODatabaseColumn> TableColumns = new List<DTODatabaseColumn>();
     List<string> PrimaryKeys = new List<string>();
+    List<int> ColChangedRows = new List<int>();
 
     DataTable OriginalDataTable;
     DataTable CurrentDataTable;
@@ -201,7 +201,6 @@ else
         }
         catch (Exception ex)
         {
-            isLoading = false;
             ErrorMessage = ex.GetBaseException().Message;
         }
     }
@@ -224,6 +223,24 @@ else
         }
 
         sheet.Rows.RemoveAt(sheet.Selection.ActiveRegion.Top);
+    }
+    #endregion
+
+    #region private void CellChaged(object sender, CellDataChangedEventArgs args)
+    private void CellChanged(object sender, CellDataChangedEventArgs args)
+    {
+        // Only add the row if one cell is changed
+        if ((args.Positions.Count() > 0) && (args.Positions.Count() < 2))
+        {
+            // Get the row number
+            int row = Convert.ToInt32(args.Positions.FirstOrDefault().row);
+
+            // Use that row number to get the hidden _Id value
+            int _Id = Convert.ToInt32(sheet.Cells[row, 0].Value);
+
+            // Add the row to the list of changed rows
+            ColChangedRows.Add(_Id);
+        }
     }
     #endregion
 
@@ -275,8 +292,8 @@ else
     }
     #endregion
 
-    #region private async Task SetConnectionString(string strConnectionString)
-    private async Task SetConnectionString(string strConnectionString)
+    #region private void SetConnectionString(string strConnectionString)
+    private void SetConnectionString(string strConnectionString)
     {
         // Set the connection string to the global variable
 
@@ -306,7 +323,7 @@ else
         if ((FabricConnectionString != "") && (AzureStorageConnectionString != ""))
         {
             isReadyForImport = true;
-            await GetTablesInDatabase();
+            GetTablesInDatabase();
         }
     }
     #endregion
@@ -320,7 +337,7 @@ else
         // to join the UI thread
         await Task.Delay(1000);
 
-        await LoadTableData(selectedTable);
+        LoadTableData(selectedTable);
     }
     #endregion
 
@@ -328,8 +345,8 @@ else
     // Load Data
     // ********************************************************************************************************************
 
-    #region private async Task GetTablesInDatabase()
-    private async Task GetTablesInDatabase()
+    #region private void GetTablesInDatabase()
+    private void GetTablesInDatabase()
     {
         tableNames = new List<string>();
 
@@ -361,19 +378,20 @@ else
             if (tableNames.Count > 0)
             {
                 selectedTable = tableNames[0];
-                await LoadTableData(selectedTable);
+                LoadTableData(selectedTable);
             }
         }
     }
     #endregion
 
-    #region private async Task LoadTableData(string paramSelectedTable)
-    private async Task LoadTableData(string paramSelectedTable)
+    #region private void LoadTableData(string paramSelectedTable)
+    private void LoadTableData(string paramSelectedTable)
     {
         ErrorMessage = "";
         selectedTable = paramSelectedTable;
 
         isLoading = true;
+        StateHasChanged();
 
         // Use the DatabaseConnectionString to get the data from the selected table
         using (SqlConnection connection = new SqlConnection(FabricConnectionString))
@@ -382,6 +400,9 @@ else
 
             try
             {
+                // Clear the list of changed rows
+                ColChangedRows = new List<int>();
+
                 // Get the primary keys for the table
                 PrimaryKeys = GetPrimaryKey(connection, selectedTable);
 
@@ -477,7 +498,7 @@ else
                 TableColumns.Insert(0, new DTODatabaseColumn { ColumnName = "_Id", ColumnType = "int", ColumnLength = 0, IsPrimaryKey = true });
 
                 // Load Data into the Datasheet
-                await LoadTableHeadersAndData(TableColumns, dt);
+                LoadTableHeadersAndData(TableColumns, dt);
             }
             catch (Exception ex)
             {
@@ -489,13 +510,17 @@ else
                 }
 
                 isLoading = false;
+                StateHasChanged();
             }
         }
+
+        isLoading = false;
+        StateHasChanged();
     }
     #endregion
 
-    #region private async Task LoadTableHeadersAndData(List<DTODatabaseColumn> paramDatabaseColumns, DataTable paramDataTable)
-    private async Task LoadTableHeadersAndData(List<DTODatabaseColumn> paramDatabaseColumns, DataTable paramDataTable)
+    #region private void LoadTableHeadersAndData(List<DTODatabaseColumn> paramDatabaseColumns, DataTable paramDataTable)
+    private void LoadTableHeadersAndData(List<DTODatabaseColumn> paramDatabaseColumns, DataTable paramDataTable)
     {
         // Create sheet with the number of columns
         sheet = new Sheet(paramDataTable.Rows.Count, paramDatabaseColumns.Count);
@@ -559,6 +584,9 @@ else
             ii++;
         }
 
+        // Wire up a method to catch cell changes
+        sheet.Cells.CellsChanged += CellChanged;
+
         // Wire up a method to catch row changes
         // Do not allow the last row to be deleted
         sheet.Rows.Removed += (sender, args) =>
@@ -580,8 +608,6 @@ else
         // Turn on history
         sheet.EndBatchUpdates();
         sheet.Commands.ResumeHistory();
-
-        isLoading = false;
     }
     #endregion
 
@@ -594,129 +620,28 @@ else
     {
         isLoading = true;
 
-        SetCurrentDataTable();
+        // // Use the FabricConnectionString to get the tables in the database
+        // using (SqlConnection connection = new SqlConnection(FabricConnectionString))
+        // {
+        //     connection.Open();
 
-        ImportDataTableIntoFabric importIntoFabric = new ImportDataTableIntoFabric();
+        //     // Get the data from the selected table
+        //     string sql = $"SELECT * FROM {selectedTable}";
+        //     SqlDataAdapter adapter = new SqlDataAdapter(sql, connection);
+        //     DataTable dt = new DataTable();
+        //     adapter.Fill(dt);
 
-        importIntoFabric.InputDataTable = CurrentDataTable;
-        importIntoFabric.TableName = RemoveSchema(selectedTable);
-        importIntoFabric.DataWarehouseConnectionString = FabricConnectionString;
-        importIntoFabric.StorageAccountName = StorageAccountName;
-        importIntoFabric.StorageContainer = ContainerName;
-        importIntoFabric.StorageAccountKey = AccountKey;
+        //     // Save the data to the Azure Storage
+        //     using (AzureStorage azureStorage = new AzureStorage(AzureStorageConnectionString))
+        //     {
+        //         azureStorage.SaveData(dt, selectedTable);
+        //     }
+
+        //     connection.Close();
+        // }
 
         isLoading = false;
-
-        Message = importIntoFabric.ImportData().Result;
-        StateHasChanged();
-
         Message = "Data saved successfully";
-    }
-    #endregion
-
-    #region private void SetCurrentDataTable()
-    private void SetCurrentDataTable()
-    {
-        // Initialize a new DataTable
-        CurrentDataTable = new DataTable();
-
-        // Define columns based on TableColumns
-        // Do not include the first _Id column
-        foreach (var column in TableColumns.Skip(1))
-        {
-            CurrentDataTable.Columns.Add(new DataColumn(column.ColumnName, GetColumnType(column.ColumnType)));
-        }
-
-        // Populate the DataTable with rows from the sheet
-        // Do not include the first _Id column
-        for (int i = 0; i < sheet.NumRows; i++)
-        {
-            Status = $"Saving row {i + 1} of {sheet.NumRows}";
-
-            DataRow row = CurrentDataTable.NewRow();
-
-            for (int j = 0; j < TableColumns.Count; j++)
-            {
-                try
-                {
-                    if ((sheet.Cells[i, j].Value != null) && (sheet.Cells[i, j].Value != DBNull.Value))
-                    {
-                        if (CurrentDataTable.Columns[j].DataType.FullName == "System.Int32")
-                        {
-                            if (sheet.Cells[i, j]?.Value?.ToString() == "")
-                            {
-                                row[j] = DBNull.Value;
-                            }
-                            else
-                            {
-                                row[j] = Convert.ToInt32(sheet.Cells[i, j].Value);
-                            }
-                        }
-                        else if (CurrentDataTable.Columns[j].DataType.FullName == "System.DateTime")
-                        {
-                            if (sheet.Cells[i, j]?.Value?.ToString() == "")
-                            {
-                                row[j] = DBNull.Value;
-                            }
-                            else
-                            {
-                                row[j] = Convert.ToDateTime(sheet.Cells[i, j].Value);
-                            }
-                        }
-                        else if (CurrentDataTable.Columns[j].DataType.FullName == "System.TimeSpan")
-                        {
-                            if (sheet.Cells[i, j]?.Value?.ToString() == "")
-                            {
-                                row[j] = DBNull.Value;
-                            }
-                            else
-                            {
-                                var TimeSpanValue = sheet.Cells[i, j].Value.ToString();
-
-                                if (DateTime.TryParse(TimeSpanValue, out var parsedDateTime))
-                                {
-                                    row[j] = parsedDateTime.TimeOfDay.ToString();
-                                }
-                                else if (TimeSpan.TryParse(TimeSpanValue, out var parsedTimeSpan))
-                                {
-                                    row[j] = parsedTimeSpan;
-                                }
-                                else
-                                {
-                                    row[j] = TimeSpanValue;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            string currentValue = "";
-
-                            currentValue = sheet.Cells[i, j].Value?.ToString() ?? "";
-
-                            currentValue = currentValue.Replace("\r\n", " ")
-                                                       .Replace("\t", " ")
-                                                       .Replace("\r", " ")
-                                                       .Replace("\n", " ")
-                                                       .Trim();
-
-                            row[j] = currentValue;
-                        }
-                    }
-                    else
-                    {
-                        row[j] = CurrentDataTable.Columns[j].DefaultValue;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    colGeneralErrors.Add(ex.GetBaseException().Message);
-                }
-            }
-
-            CurrentDataTable.Rows.Add(row);
-        }
-
-        Status = $"Importing into Fabric...";
     }
     #endregion
 
@@ -972,23 +897,6 @@ else
         }
 
         return sqlDbType;
-    }
-    #endregion
-
-    #region static string RemoveSchema(string input)
-    static string RemoveSchema(string input)
-    {
-        int startIndex = input.IndexOf('[') + 1;
-        int endIndex = input.IndexOf(']');
-
-        if (startIndex < 0 || endIndex < 0 || startIndex >= endIndex)
-        {
-            throw new ArgumentException("Invalid input format");
-        }
-
-        string tableName = input.Substring(endIndex + 2);
-
-        return tableName;
     }
     #endregion
 
