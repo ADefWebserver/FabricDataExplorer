@@ -97,7 +97,7 @@ else
             <select @onchange="OnSelectedTableChanged" style="width: 300px; border-block:hidden">
                 @foreach (var tableName in tableNames)
                 {
-                    @if(tableName == selectedTable)
+                    @if (tableName == selectedTable)
                     {
                         <option value="@tableName" selected>@tableName</option>
                     }
@@ -127,6 +127,23 @@ else
             <div class="rz-p-sm-1" style="background-color:whitesmoke;border-block:thin;border-block-color:lightgray;text-align:left">
                 <b>Result: </b>
                 <span>@Message</span>
+                @if (colGeneralErrors.Count > 0)
+                {
+                    <div class="modal-body">
+                        <div style="height: 250px; overflow-y: scroll;">
+                            <table>
+                                @foreach (var item in colGeneralErrors)
+                                {
+                                    <tr>
+                                        <td>
+                                            <label style="font-weight: bold">@item</label>
+                                        </td>
+                                    </tr>
+                                }
+                            </table>
+                        </div>
+                    </div>
+                }
             </div>
         }
     }
@@ -176,6 +193,7 @@ else
 
     DataTable OriginalDataTable;
     DataTable CurrentDataTable;
+    DataTable UpdateDataTable;
 
     // For the TimeEditorComponent and TimeRenderer
     private Dictionary<string, CellTypeDefinition> CustomTypes { get; } = new();
@@ -235,11 +253,11 @@ else
             // Get the row number
             int row = Convert.ToInt32(args.Positions.FirstOrDefault().row);
 
-            // Use that row number to get the hidden _Id value
-            int _Id = Convert.ToInt32(sheet.Cells[row, 0].Value);
+            // Use that row number to get the hidden __Id value
+            int __Id = Convert.ToInt32(sheet.Cells[row, 0].Value);
 
             // Add the row to the list of changed rows
-            ColChangedRows.Add(_Id);
+            ColChangedRows.Add(__Id);
         }
     }
     #endregion
@@ -472,7 +490,7 @@ else
                     SavingDisabled = true;
 
                     // Get the data from the selected table
-                    sql = $"SELECT 0 AS _Id, {strTableNames} FROM {selectedTable}";
+                    sql = $"SELECT 0 AS __Id, {strTableNames} FROM {selectedTable}";
                 }
                 else
                 {
@@ -482,7 +500,7 @@ else
                     string strPrimaryKeys = string.Join(",", PrimaryKeys.Select(x => $"[{x}]").ToArray());
 
                     // Get the data from the selected table
-                    sql = $"SELECT ROW_NUMBER() OVER (ORDER BY {strPrimaryKeys}) AS _Id, {strTableNames} FROM {selectedTable}";
+                    sql = $"SELECT ROW_NUMBER() OVER (ORDER BY {strPrimaryKeys}) AS __Id, {strTableNames} FROM {selectedTable}";
                 }
 
                 SqlDataAdapter adapter = new SqlDataAdapter(sql, connection);
@@ -494,8 +512,8 @@ else
                 // Save the original data
                 OriginalDataTable = dt.Copy();
 
-                // Make the first column _Id
-                TableColumns.Insert(0, new DTODatabaseColumn { ColumnName = "_Id", ColumnType = "int", ColumnLength = 0, IsPrimaryKey = true });
+                // Make the first column __Id
+                TableColumns.Insert(0, new DTODatabaseColumn { ColumnName = "__Id", ColumnType = "int", ColumnLength = 0, IsPrimaryKey = true });
 
                 // Load Data into the Datasheet
                 LoadTableHeadersAndData(TableColumns, dt);
@@ -529,7 +547,7 @@ else
         sheet.BatchUpdates();
         sheet.Commands.PauseHistory();
 
-        // Hide the _Id column
+        // Hide the __Id column
         sheet.Columns.Hide(0, 1);
 
         int i = 0;
@@ -620,28 +638,200 @@ else
     {
         isLoading = true;
 
-        // // Use the FabricConnectionString to get the tables in the database
-        // using (SqlConnection connection = new SqlConnection(FabricConnectionString))
-        // {
-        //     connection.Open();
+        // # Get the current data in the sheet
+        colGeneralErrors = new List<string>();
 
-        //     // Get the data from the selected table
-        //     string sql = $"SELECT * FROM {selectedTable}";
-        //     SqlDataAdapter adapter = new SqlDataAdapter(sql, connection);
-        //     DataTable dt = new DataTable();
-        //     adapter.Fill(dt);
+        // Initialize a new DataTables
+        CurrentDataTable = new DataTable();
+        UpdateDataTable = new DataTable();
 
-        //     // Save the data to the Azure Storage
-        //     using (AzureStorage azureStorage = new AzureStorage(AzureStorageConnectionString))
-        //     {
-        //         azureStorage.SaveData(dt, selectedTable);
-        //     }
+        // Define columns based on TableColumns
+        foreach (var column in TableColumns)
+        {
+            CurrentDataTable.Columns.Add(new DataColumn(column.ColumnName, GetColumnType(column.ColumnType)));
+            UpdateDataTable.Columns.Add(new DataColumn(column.ColumnName, GetColumnType(column.ColumnType)));
+        }
 
-        //     connection.Close();
-        // }
+        // Populate the CurrentDataTable with rows from the sheet
+        for (int i = 0; i < sheet.NumRows; i++)
+        {
+            DataRow row = CurrentDataTable.NewRow();
+
+            for (int j = 0; j < TableColumns.Count; j++)
+            {
+                try
+                {
+                    if ((sheet.Cells[i, j].Value != null) && (sheet.Cells[i, j].Value != DBNull.Value))
+                    {
+                        if (CurrentDataTable.Columns[j].DataType.FullName == "System.Int32")
+                        {
+                            if (sheet.Cells[i, j]?.Value?.ToString() == "")
+                            {
+                                row[j] = DBNull.Value;
+                            }
+                            else
+                            {
+                                row[j] = Convert.ToInt32(sheet.Cells[i, j].Value);
+                            }
+                        }
+                        else if (CurrentDataTable.Columns[j].DataType.FullName == "System.DateTime")
+                        {
+                            if (sheet.Cells[i, j]?.Value?.ToString() == "")
+                            {
+                                row[j] = DBNull.Value;
+                            }
+                            else
+                            {
+                                row[j] = Convert.ToDateTime(sheet.Cells[i, j].Value);
+                            }
+                        }
+                        else if (CurrentDataTable.Columns[j].DataType.FullName == "System.TimeSpan")
+                        {
+                            if (sheet.Cells[i, j]?.Value?.ToString() == "")
+                            {
+                                row[j] = DBNull.Value;
+                            }
+                            else
+                            {
+                                var TimeSpanValue = sheet.Cells[i, j].Value.ToString();
+
+                                if (DateTime.TryParse(TimeSpanValue, out var parsedDateTime))
+                                {
+                                    row[j] = parsedDateTime.TimeOfDay.ToString();
+                                }
+                                else if (TimeSpan.TryParse(TimeSpanValue, out var parsedTimeSpan))
+                                {
+                                    row[j] = parsedTimeSpan;
+                                }
+                                else
+                                {
+                                    row[j] = TimeSpanValue;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            string currentValue = "";
+
+                            currentValue = sheet.Cells[i, j].Value?.ToString() ?? "";
+
+                            currentValue = currentValue.Replace("\r\n", " ")
+                                                       .Replace("\t", " ")
+                                                       .Replace("\r", " ")
+                                                       .Replace("\n", " ")
+                                                       .Trim();
+
+                            row[j] = currentValue;
+                        }
+                    }
+                    else
+                    {
+                        row[j] = CurrentDataTable.Columns[j].DefaultValue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    colGeneralErrors.Add(ex.GetBaseException().Message);
+                }
+            }
+
+            CurrentDataTable.Rows.Add(row);
+        }
+
+        ProcessChanges();
 
         isLoading = false;
+
         Message = "Data saved successfully";
+    }
+    #endregion
+
+    #region public ProcessChanges()
+    public void ProcessChanges()
+    {
+        try
+        {
+            // *****************************************
+            // Inserts
+            // *****************************************
+
+            ProcessInsertedRows();
+
+            // *****************************************
+            // Updates
+            // *****************************************
+
+            ProcessUpdatedRows();
+
+            // *****************************************
+            // Deletes
+            // *****************************************
+
+            //ProcessDeletedRows();
+        }
+        catch (Exception ex)
+        {
+            colGeneralErrors.Add(ex.GetBaseException().Message);
+        }
+    }
+    #endregion
+
+    #region void ProcessInsertedRows()
+    private void ProcessInsertedRows()
+    {
+        // Find Added Rows
+        var addedRows = CurrentDataTable.AsEnumerable()
+            .Where(row => row.Field<object>("_Id") == null)
+            .ToList();
+
+        // Loop through the added rows
+        foreach (var rowCur in addedRows)
+        {
+            // Create a new row for the UpdateDataTable
+            DataRow newRow = UpdateDataTable.NewRow();
+
+            // Copy data from rowCur to newRow
+            newRow.ItemArray = rowCur.ItemArray.Clone() as object[];
+
+            // Add the new row to UpdateDataTable
+            UpdateDataTable.Rows.Add(newRow);
+        }
+    }
+    #endregion
+
+    #region void ProcessUpdatedRows()
+    private void ProcessUpdatedRows()
+    {
+        // Remove duplicate changed rows
+        ColChangedRows = ColChangedRows.Distinct().ToList();
+
+        // Process each changed row
+        foreach (int row in ColChangedRows)
+        {
+            // Skip rows where _Id column is 0 or null
+            if (row == 0)
+                continue;
+
+            // Get row from CurrentDataTable where __Id matches
+            DataRow rowCur = CurrentDataTable.Select($"__Id = {row}").FirstOrDefault();
+
+            // Ensure a matching row was found
+            if (rowCur != null)
+            {
+                // Ensure the _Id field is not null (i.e. it is not a new row)
+                if (rowCur.Field<object>("__Id") != null)
+                {
+                    // Create a new row for the UpdateDataTable
+                    DataRow newRow = UpdateDataTable.NewRow();
+
+                    // Copy the data from rowCur to newRow
+                    newRow.ItemArray = rowCur.ItemArray.Clone() as object[];
+
+                    // Add the new row to UpdateDataTable
+                    UpdateDataTable.Rows.Add(newRow);
+                }
+            }
+        }
     }
     #endregion
 
