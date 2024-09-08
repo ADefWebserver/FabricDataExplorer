@@ -7,7 +7,7 @@
 
 #### About
 
-This is a project by [BlazorData.net](BlazorData.net)
+This is a project by [BlazorData.net](https://BlazorData.net)
 
 ![image](https://github.com/user-attachments/assets/8ee3a044-bf22-4bb3-a640-331f611b28af)
 
