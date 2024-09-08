@@ -28,9 +28,9 @@ public class ImportDataTableIntoFabric
         StorageContainer = "";
     }
 
-    public async Task<string> ImportData()
+    public async Task<string> ImportDataAsync()
     {
-        string response = $"Import of {TableName} complete!";
+        string response = "";
 
         try
         {
@@ -127,10 +127,7 @@ public class ImportDataTableIntoFabric
 
         return new List<string>
         {
-            $"IF OBJECT_ID('[dbo].{tableName}', 'U') IS NOT NULL DROP TABLE dbo.{tableName}",
-            AddNotNULL($"CREATE TABLE [dbo].{tableName} ({fieldSchema})"),
-            $"ALTER TABLE [dbo].{tableName} ADD CONSTRAINT PK_{StripBrackets(tableName)} PRIMARY KEY NONCLUSTERED (_Id) NOT ENFORCED;",
-            $"COPY INTO [dbo].{tableName} " +
+            $"COPY INTO {tableName} " +
             $"FROM '{filePath}' " +
             $"WITH (file_type = 'PARQUET', CREDENTIAL=(IDENTITY= 'Shared Access Signature', SECRET='{sasToken}'))"
         };

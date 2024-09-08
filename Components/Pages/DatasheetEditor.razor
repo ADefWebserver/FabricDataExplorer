@@ -211,16 +211,23 @@ else
     }
 
     #region Datasheet Events
-    private void btnSave()
+    private async Task btnSave()
     {
+        isLoading = true;
+
         try
         {
-            SaveData();
+            Message = "";
+            colGeneralErrors = new List<string>();
+
+            await SaveData();
         }
         catch (Exception ex)
         {
             ErrorMessage = ex.GetBaseException().Message;
         }
+
+        isLoading = false;
     }
 
     private void InsertRowAfterSelection()
@@ -406,6 +413,9 @@ else
     private void LoadTableData(string paramSelectedTable)
     {
         ErrorMessage = "";
+        Message = "";
+        colGeneralErrors = new List<string>();
+
         selectedTable = paramSelectedTable;
 
         isLoading = true;
@@ -633,11 +643,9 @@ else
     // Save Data
     // ********************************************************************************************************************
 
-    #region private void SaveData()
-    private void SaveData()
+    #region private async Task  SaveData()
+    private async Task SaveData()
     {
-        isLoading = true;
-
         // # Get the current data in the sheet
         colGeneralErrors = new List<string>();
 
@@ -738,9 +746,7 @@ else
             CurrentDataTable.Rows.Add(row);
         }
 
-        ProcessChanges();
-
-        isLoading = false;
+        await ProcessChanges();
 
         if(colGeneralErrors.Count == 0)
         {
@@ -753,11 +759,17 @@ else
     }
     #endregion
 
-    #region public ProcessChanges()
-    public void ProcessChanges()
+    #region public async Task ProcessChanges()
+    public async Task ProcessChanges()
     {
         try
         {
+            // *****************************************
+            // Deletes
+            // *****************************************
+
+            ProcessDeletedRows();
+
             // *****************************************
             // Inserts
             // *****************************************
@@ -771,15 +783,57 @@ else
             ProcessUpdatedRows();
 
             // *****************************************
-            // Deletes
+            // Import data from UpdateDataTable into Fabric
             // *****************************************
 
-            ProcessDeletedRows();
+            if (UpdateDataTable.Rows.Count > 0)
+            {
+                ImportDataTableIntoFabric objImportDataTableIntoFabric = new ImportDataTableIntoFabric();
+                objImportDataTableIntoFabric.InputDataTable = UpdateDataTable;
+                objImportDataTableIntoFabric.TableName = selectedTable;
+                objImportDataTableIntoFabric.DataWarehouseConnectionString = FabricConnectionString;
+                objImportDataTableIntoFabric.StorageAccountName = StorageAccountName;
+                objImportDataTableIntoFabric.StorageAccountKey = AccountKey;
+                objImportDataTableIntoFabric.StorageContainer = ContainerName;
+
+                var result = await objImportDataTableIntoFabric.ImportDataAsync();
+
+                if(result != "")
+                {
+                    colGeneralErrors.Add(result);
+                }
+            }
         }
         catch (Exception ex)
         {
             colGeneralErrors.Add(ex.GetBaseException().Message);
         }
+    }
+    #endregion
+
+    #region void ProcessDeletedRows()
+    private void ProcessDeletedRows()
+    {
+        // Get all the _Id values from CurrentDataTable that are not null
+        var NotNullTableCollection = CurrentDataTable.AsEnumerable()
+            .Where(row => row.Field<object>("_Id") != null)
+            .ToList();
+
+        // Get the _Id values from the CurrentDataTable
+        var currentIds = NotNullTableCollection.AsEnumerable()
+            .Select(r => r.Field<int>("__Id"))
+            .ToList();
+
+        // Convert currentIds to long
+        List<long> longCurrentIds = currentIds.Select(x => (long)x).ToList();
+
+        // Filter OriginalDataTable to get the rows
+        // that are not present in CurrentDataTable
+        var deletedRows = OriginalDataTable.AsEnumerable()
+            .Where(row => !longCurrentIds.Contains(row.Field<long>("__Id")));
+
+        // Call DeletRows in Fabric
+        DelteRowsInFabric(deletedRows);
     }
     #endregion
 
@@ -845,30 +899,17 @@ else
                 }
             }
         }
+
+        // Call DeletRows in Fabric
+        // because they have to be deleted first
+        // to later be updated
+        DelteRowsInFabric(UpdateDataTable.AsEnumerable());
     }
     #endregion
 
-    #region void ProcessDeletedRows()
-    private void ProcessDeletedRows()
+    #region void DelteRowsInFabric(IEnumerable<DataRow> deletedRows)
+    private void DelteRowsInFabric(IEnumerable<DataRow> deletedRows)
     {
-        // Get all the _Id values from CurrentDataTable that are not null
-        var NotNullTableCollection = CurrentDataTable.AsEnumerable()
-            .Where(row => row.Field<object>("_Id") != null)
-            .ToList();
-
-        // Get the _Id values from the CurrentDataTable
-        var currentIds = NotNullTableCollection.AsEnumerable()
-            .Select(r => r.Field<int>("__Id"))
-            .ToList();
-
-        // Convert currentIds to long
-        List<long> longCurrentIds = currentIds.Select(x => (long)x).ToList();
-
-        // Filter OriginalDataTable to get the rows
-        // that are not present in CurrentDataTable
-        var deletedRows = OriginalDataTable.AsEnumerable()
-            .Where(row => !longCurrentIds.Contains(row.Field<long>("__Id")));
-
         // Loop through the deleted rows
         foreach (var rowCur in deletedRows)
         {
