@@ -138,15 +138,4 @@ public class ImportDataTableIntoFabric
         // Extract the column names from the DataTable
         return dataTable.Columns.Cast<DataColumn>().Select(col => col.ColumnName).ToList();
     }
-
-    public static string AddNotNULL(string updateStatement)
-    {
-        // Add NOT NULL to [_Id] VARCHAR(4000) so Primary Key can be created
-        return updateStatement.Replace("[_Id] VARCHAR(4000)", "[_Id] VARCHAR(4000) NOT NULL");
-    }
-
-    public static string StripBrackets(string tableName)
-    {
-        return tableName.Replace("[", "").Replace("]", "");
-    }
 }
