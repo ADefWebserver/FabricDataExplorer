@@ -784,6 +784,8 @@ else
             .Where(row => row.Field<object>("_Id") == null)
             .ToList();
 
+        int maxId = GetHighestId();
+
         // Loop through the added rows
         foreach (var rowCur in addedRows)
         {
@@ -792,6 +794,10 @@ else
 
             // Copy data from rowCur to newRow
             newRow.ItemArray = rowCur.ItemArray.Clone() as object[];
+
+            // set value of _Id to the next highest value
+            maxId++;
+            newRow["_Id"] = maxId;
 
             // Add the new row to UpdateDataTable
             UpdateDataTable.Rows.Add(newRow);
@@ -1087,6 +1093,33 @@ else
         }
 
         return sqlDbType;
+    }
+    #endregion
+
+    #region private int GetHighestId()
+    private int GetHighestId()
+    {
+        int maxId = 0;
+
+        try
+        {
+            // Get all values of the _Id column in CurrentDataTable
+            var Ids = CurrentDataTable.AsEnumerable()
+                .Select(row => row.Field<object>("_Id"))
+                .ToList();
+
+            // Convert Ids from a list of strings to a list of integers
+            var IdsInt = Ids.Select(x => Convert.ToInt32(x)).ToList();
+
+            // Find the maximum value of IdsInt
+            maxId = IdsInt.Max();
+        }
+        catch
+        {
+            maxId = 0;
+        }
+
+        return maxId;
     }
     #endregion
 
