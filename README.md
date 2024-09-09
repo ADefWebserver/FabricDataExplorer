@@ -5,6 +5,12 @@
 
 ![image](https://github.com/user-attachments/assets/646f270b-43d9-478e-b980-f3cfc83ccb6c)
 
+### Articles
+
+[Import Data Fast into Fabric Using Parquet Files](https://blazordata.net/ViewBlogPost/3)
+
+[Connect to Microsoft Fabric Using TSQL and Microsoft Blazor](https://blazordata.net/ViewBlogPost/2)
+
 #### About
 
 This is a project by [BlazorData.net](https://BlazorData.net)
