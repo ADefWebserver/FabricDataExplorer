@@ -7,9 +7,11 @@
 
 ### Articles
 
-[Import Data Fast into Fabric Using Parquet Files](https://blazordata.net/ViewBlogPost/3)
-
 [Connect to Microsoft Fabric Using TSQL and Microsoft Blazor](https://blazordata.net/ViewBlogPost/2)
+
+[Microsoft Fabric and the Blazor Data Sheet](https://blazordata.net/ViewBlogPost/4)
+
+[Import Data Fast into Fabric Using Parquet Files](https://blazordata.net/ViewBlogPost/3)
 
 #### About
 
